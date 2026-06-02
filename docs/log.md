@@ -22,7 +22,7 @@
     "user_agent": "Mozilla/5.0"
   },
   "actor": {
-    "id": "123132" or any
+    "id": "123132",
     "name": "User",
     "ip": "192.168.1.42",
   },
