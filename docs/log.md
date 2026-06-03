@@ -24,7 +24,7 @@
   "actor": {
     "id": "123132",
     "name": "User",
-    "ip": "192.168.1.42",
+    "ip": "192.168.1.42"
   },
   "time": {
     "duration_ms": 695,
@@ -35,7 +35,6 @@
 
     {
       "event_id": "evt_001",
-      "parent_event_id": null,
       "name": "authenticate_user",
       "type": "FUNCTION",
       "status": "SUCCESS",
@@ -47,206 +46,140 @@
         "method": "JWT",
         "user_id": "usr_9f3a1c",
         "token_expires_at": "2026-05-24T11:32:15.000Z"
-      },
-      "errors": []
+      }
     },
 
     {
       "event_id": "evt_002",
-      "parent_event_id": null,
-      "name": "validate_request_payload",
+      "name": "process_order",
       "type": "FUNCTION",
-      "status": "SUCCESS",
-      "severity": "INFO",
-      "timestamp": "2026-05-24T10:32:15.131Z",
-      "duration_ms": 3,
-      "message": "Payload da requisição validado com sucesso",
-      "metadata": {
-        "fields_validated": ["items", "shipping_address", "payment_method"],
-        "items_count": 3
-      },
-      "errors": []
-    },
-
-    {
-      "event_id": "evt_003",
-      "parent_event_id": null,
-      "name": "fetch_user_profile",
-      "type": "DATABASE",
-      "status": "SUCCESS",
-      "severity": "INFO",
-      "timestamp": "2026-05-24T10:32:15.134Z",
-      "duration_ms": 22,
-      "message": "Perfil do usuário recuperado com sucesso",
-      "metadata": {
-        "table": "users",
-        "query": "SELECT id, name, email, status FROM users WHERE id = $1",
-        "rows_returned": 1
-      },
-      "errors": []
-    },
-
-    {
-      "event_id": "evt_004",
-      "parent_event_id": null,
-      "name": "fetch_cart_items",
-      "type": "DATABASE",
-      "status": "SUCCESS",
-      "severity": "INFO",
-      "timestamp": "2026-05-24T10:32:15.156Z",
-      "duration_ms": 18,
-      "message": "Itens do carrinho recuperados com sucesso",
-      "metadata": {
-        "table": "cart_items",
-        "query": "SELECT * FROM cart_items WHERE user_id = $1 AND status = 'active'",
-        "rows_returned": 3
-      },
-      "errors": []
-    },
-
-    {
-      "event_id": "evt_005",
-      "parent_event_id": null,
-      "name": "check_stock_availability",
-      "type": "INTERNAL-SERVICE",
-      "status": "SUCCESS",
-      "severity": "INFO",
-      "timestamp": "2026-05-24T10:32:15.174Z",
-      "duration_ms": 31,
-      "message": "Estoque verificado, todos os itens disponíveis",
-      "metadata": {
-        "service": "inventory-service",
-        "topic": "stock.check",
-        "items_checked": 3,
-        "all_available": true
-      },
-      "errors": []
-    },
-
-    {
-      "event_id": "evt_006",
-      "parent_event_id": null,
-      "name": "calculate_order_total",
-      "type": "FUNCTION",
-      "status": "SUCCESS",
-      "severity": "INFO",
-      "timestamp": "2026-05-24T10:32:15.205Z",
-      "duration_ms": 2,
-      "message": "Total do pedido calculado com sucesso",
-      "metadata": {
-        "subtotal": 349.90,
-        "discount": 30.00,
-        "shipping_fee": 15.00,
-        "taxes": 28.46,
-        "total": 363.36,
-        "currency": "BRL"
-      },
-      "errors": []
-    },
-
-    {
-      "event_id": "evt_007",
-      "parent_event_id": null,
-      "name": "reserve_stock",
-      "type": "INTERNAL-SERVICE",
-      "status": "SUCCESS",
-      "severity": "INFO",
-      "timestamp": "2026-05-24T10:32:15.207Z",
-      "duration_ms": 27,
-      "message": "Estoque reservado temporariamente para o pedido",
-      "metadata": {
-        "service": "inventory-service",
-        "topic": "stock.reserve",
-        "reservation_id": "rsv_3c7e2a",
-        "expires_at": "2026-05-24T10:47:15.207Z"
-      },
-      "errors": []
-    },
-
-    {
-      "event_id": "evt_008",
-      "parent_event_id": null,
-      "name": "process_payment",
-      "type": "EXTERNAL-SERVICE",
       "status": "FAILURE",
       "severity": "ERROR",
-      "timestamp": "2026-05-24T10:32:15.234Z",
-      "duration_ms": 541,
-      "message": "Falha ao processar pagamento — cartão recusado",
-      "metadata": {
-        "provider": "Stripe",
-        "endpoint": "https://api.stripe.com/v1/charges",
-        "http_status": 402,
-        "attempt": 2,
-        "max_attempts": 2,
-        "payment_method": "credit_card",
-        "card_last4": "4242",
-        "amount": 363.36,
-        "currency": "BRL"
-      },
-      "errors": [
+      "timestamp": "2026-05-24T10:32:15.131Z",
+      "duration_ms": 687,
+      "message": "Falha no processamento do pedido",
+      "events": [
+
         {
-          "code": "CARD_DECLINED",
-          "message": "Cartão recusado pela operadora",
-          "stack": null
+          "event_id": "evt_003",
+          "parent_event_id": "evt_002",
+          "name": "validate_request_payload",
+          "type": "FUNCTION",
+          "status": "SUCCESS",
+          "severity": "INFO",
+          "timestamp": "2026-05-24T10:32:15.131Z",
+          "duration_ms": 3,
+          "message": "Payload da requisição validado com sucesso",
+          "metadata": {
+            "fields_validated": ["items", "shipping_address", "payment_method"],
+            "items_count": 3
+          }
+        },
+
+        {
+          "event_id": "evt_004",
+          "parent_event_id": "evt_002",
+          "name": "fetch_cart_items",
+          "type": "DATABASE",
+          "status": "SUCCESS",
+          "severity": "INFO",
+          "timestamp": "2026-05-24T10:32:15.156Z",
+          "duration_ms": 18,
+          "message": "Itens do carrinho recuperados com sucesso",
+          "metadata": {
+            "table": "cart_items",
+            "query": "SELECT * FROM cart_items WHERE user_id = $1 AND status = 'active'",
+            "rows_returned": 3
+          }
+        },
+
+        {
+          "event_id": "evt_005",
+          "parent_event_id": "evt_002",
+          "name": "check_stock_availability",
+          "type": "INTERNAL_SERVICE",
+          "status": "SUCCESS",
+          "severity": "INFO",
+          "timestamp": "2026-05-24T10:32:15.174Z",
+          "duration_ms": 31,
+          "message": "Estoque verificado, todos os itens disponíveis",
+          "metadata": {
+            "service": "inventory-service",
+            "topic": "stock.check",
+            "items_checked": 3,
+            "all_available": true
+          }
+        },
+
+        {
+          "event_id": "evt_006",
+          "parent_event_id": "evt_002",
+          "name": "process_payment",
+          "type": "EXTERNAL_SERVICE",
+          "status": "FAILURE",
+          "severity": "ERROR",
+          "timestamp": "2026-05-24T10:32:15.234Z",
+          "duration_ms": 541,
+          "message": "Falha ao processar pagamento — cartão recusado",
+          "metadata": {
+            "provider": "Stripe",
+            "endpoint": "https://api.stripe.com/v1/charges",
+            "http_status": 402,
+            "attempt": 2,
+            "max_attempts": 2,
+            "payment_method": "credit_card",
+            "card_last4": "4242",
+            "amount": 363.36,
+            "currency": "BRL"
+          },
+          "errors": [
+            {
+              "code": "CARD_DECLINED",
+              "message": "Cartão recusado pela operadora",
+              "stack": null
+            }
+          ],
+          "events": [
+
+            {
+              "event_id": "evt_007",
+              "parent_event_id": "evt_006",
+              "name": "release_stock_reservation",
+              "type": "INTERNAL_SERVICE",
+              "status": "SUCCESS",
+              "severity": "WARN",
+              "timestamp": "2026-05-24T10:32:15.775Z",
+              "duration_ms": 19,
+              "message": "Reserva de estoque liberada após falha no pagamento",
+              "metadata": {
+                "service": "inventory-service",
+                "topic": "stock.release",
+                "reservation_id": "rsv_3c7e2a"
+              }
+            },
+
+            {
+              "event_id": "evt_008",
+              "parent_event_id": "evt_006",
+              "name": "notify_user_payment_failed",
+              "type": "INTERNAL_SERVICE",
+              "status": "SUCCESS",
+              "severity": "WARN",
+              "timestamp": "2026-05-24T10:32:15.794Z",
+              "duration_ms": 14,
+              "message": "Notificação de falha no pagamento enviada ao usuário",
+              "metadata": {
+                "service": "notification-service",
+                "topic": "payment.failed",
+                "channels": ["email", "push"],
+                "user_id": "usr_9f3a1c"
+              }
+            }
+
+          ]
         }
+
       ]
-    },
-
-    {
-      "event_id": "evt_009",
-      "parent_event_id": "evt_008",
-      "name": "release_stock_reservation",
-      "type": "INTERNAL-SERVICE",
-      "status": "SUCCESS",
-      "severity": "WARN",
-      "timestamp": "2026-05-24T10:32:15.775Z",
-      "duration_ms": 19,
-      "message": "Reserva de estoque liberada após falha no pagamento",
-      "metadata": {
-        "service": "inventory-service",
-        "topic": "stock.release",
-        "reservation_id": "rsv_3c7e2a"
-      },
-      "errors": []
-    },
-
-    {
-      "event_id": "evt_010",
-      "parent_event_id": "evt_008",
-      "name": "notify_user_payment_failed",
-      "type": "INTERNAL-SERVICE",
-      "status": "SUCCESS",
-      "severity": "WARN",
-      "timestamp": "2026-05-24T10:32:15.794Z",
-      "duration_ms": 14,
-      "message": "Notificação de falha no pagamento enviada ao usuário",
-      "metadata": {
-        "service": "notification-service",
-        "topic": "payment.failed",
-        "channels": ["email", "push"],
-        "user_id": "usr_9f3a1c",
-        "correlation_id": "corr_7a9b2d1e"
-      },
-      "errors": []
-    },
-
-    {
-      "event_id": "evt_011",
-      "parent_event_id": "evt_008",
-      "name": "log_failed_transaction",
-      "type": "DATABASE",
-      "status": "SUCCESS",
-      "severity": "WARN",
-      "timestamp": "2026-05-24T10:32:15.808Z",
-      "duration_ms": 10,
-      "message": "Tentativa de transação malsucedida registrada no banco",
-      "metadata": {
-        "table": "failed_transactions",
-        "transaction_id": "txn_f9c3b2a1",
-        "reason": "CARD_DECLINED"
-      },
-      "errors": []
     }
 
   ]
@@ -321,12 +254,12 @@ Dados de temporização da requisição completa.
 
 ## `events[]`
 
-Array de eventos rastreados durante o ciclo de vida da requisição.
+Array de eventos rastreados durante o ciclo de vida da requisição. Quando `oltgo.StartEvent(ctx, ...)` é utilizado, os eventos são automaticamente aninhados em uma estrutura hierárquica (arvore) baseada no `parent_event_id`, com cada evento podendo conter subeventos no campo `events`.
 
 | Campo | Tipo | Obrigatório | Descrição | Exemplo |
 |---|---|---|---|---|
 | `event_id` | `string` | ✅ | Identificador único do evento dentro do trace | `"evt_001"` |
-| `parent_event_id` | `string \| null` | ✅ | ID do evento pai. `null` para eventos raiz | `"evt_008"`, `null` |
+| `parent_event_id` | `string \| null` | ❌ | ID do evento pai. Omitido para eventos raiz. Preenchido automaticamente ao usar `oltgo.StartEvent(ctx, ...)` | `"evt_002"`, `null` |
 | `name` | `string` | ✅ | Nome descritivo da operação rastreada | `"process_payment"` |
 | `type` | `enum` | ✅ | Categoria da operação. Valores: `FUNCTION`, `DATABASE`, `EXTERNAL_SERVICE`, `INTERNAL_SERVICE` | `"EXTERNAL_SERVICE"` |
 | `status` | `enum` | ✅ | Resultado do evento. Valores: `SUCCESS`, `FAILURE` | `"FAILURE"` |
@@ -336,6 +269,7 @@ Array de eventos rastreados durante o ciclo de vida da requisição.
 | `message` | `string` | ✅ | Mensagem legível descrevendo o resultado do evento | `"Falha ao processar pagamento"` |
 | `metadata` | `map[string]any` | ❌ | Dados contextuais livres, específicos por tipo de evento | ver abaixo |
 | `errors` | `[]EventError` | ❌ | Lista de erros ocorridos. Omitido quando vazio (`omitempty`) | ver abaixo |
+| `events` | `[]Event` | ❌ | Subeventos aninhados (filhos deste evento). Montados automaticamente no `Commit()` a partir do `parent_event_id`. Omitido quando vazio (`omitempty`) | ver exemplo acima |
 
 ---
 

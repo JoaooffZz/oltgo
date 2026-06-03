@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" alt="Oltgo Logo" width="280" style="border-radius: 12px;" />
+</p>
+
 # Oltgo — Biblioteca de Telemetria e Observabilidade em Go
 
 O `oltgo` é uma biblioteca leve, rápida e concorrente projetada para capturar e estruturar logs e rastreamentos (traces) em microsserviços, monólitos ou quaisquer aplicações escritas em Go.
@@ -86,7 +90,7 @@ func HandleRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := oltgo.WithCollection(r.Context(), collection)
 
 	// Propaga o contexto modificado para as funções internas
-	executeBusinessLogic(ctx)
+	checkoutHandler(ctx)
 
 	// Commita os dados para a fila de envio assíncrono
 	collection.Commit()
@@ -120,7 +124,100 @@ func executeBusinessLogic(ctx context.Context) {
 
 ---
 
-## 4. O Schema de Log Estruturado
+## 4. Eventos Hierárquicos (Árvore de Eventos)
+
+O `oltgo` suporta o aninhamento automático de eventos em uma estrutura de árvore. Ao usar a função `oltgo.StartEvent(ctx, ...)`, o ID do evento pai é propagado automaticamente pelo `context.Context`, eliminando a necessidade de vincular manualmente o `parent_event_id`.
+
+### Como funciona
+
+1. `oltgo.StartEvent` retorna um **novo contexto** contendo o ID do evento recém-criado como "evento ativo".
+2. Qualquer chamada subsequente a `oltgo.StartEvent` usando esse contexto herdará automaticamente o evento anterior como pai.
+3. No `Commit()`, a lista plana de eventos é reconstruída em uma árvore hierárquica baseada nos `parent_event_id`.
+
+### Exemplo Prático
+
+```go
+func checkoutHandler(ctx context.Context) error {
+	// Evento raiz — todos os subeventos serão filhos dele
+	ctx, mainEvt := oltgo.StartEvent(ctx, "checkout_flow", oltgo.TypeFunction, oltgo.SeverityInfo)
+	defer mainEvt.WithMessage("Fluxo de checkout completo").End()
+
+	// Subeventos herdam o pai automaticamente do contexto
+	authenticateUser(ctx)
+	fetchItems(ctx)
+
+	return nil
+}
+
+func authenticateUser(ctx context.Context) {
+	// Automaticamente filho de "checkout_flow"
+	_, evt := oltgo.StartEvent(ctx, "authenticate_user", oltgo.TypeFunction, oltgo.SeverityInfo)
+	defer evt.WithMessage("Usuário autenticado com JWT").End()
+}
+
+func fetchItems(ctx context.Context) {
+	// Automaticamente filho de "checkout_flow"
+	ctx, evt := oltgo.StartEvent(ctx, "fetch_items", oltgo.TypeDatabase, oltgo.SeverityInfo)
+	defer evt.WithMessage("Itens carregados").End()
+
+	// Netos: filhos de "fetch_items"
+	checkStock(ctx)
+}
+
+func checkStock(ctx context.Context) {
+	// Automaticamente filho de "fetch_items"
+	_, evt := oltgo.StartEvent(ctx, "check_stock", oltgo.TypeDatabase, oltgo.SeverityInfo)
+	defer evt.WithMessage("Estoque verificado").End()
+}
+```
+
+### Saída JSON Resultante
+
+O `Commit()` produz uma árvore aninhada automaticamente:
+
+```json
+{
+  "events": [
+    {
+      "event_id": "evt_001",
+      "name": "checkout_flow",
+      "events": [
+        {
+          "event_id": "evt_002",
+          "parent_event_id": "evt_001",
+          "name": "authenticate_user"
+        },
+        {
+          "event_id": "evt_003",
+          "parent_event_id": "evt_001",
+          "name": "fetch_items",
+          "events": [
+            {
+              "event_id": "evt_004",
+              "parent_event_id": "evt_003",
+              "name": "check_stock"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Funções Auxiliares de Contexto
+
+| Função | Descrição |
+|---|---|
+| `oltgo.StartEvent(ctx, name, type, severity)` | Cria um evento, herda o pai do contexto e retorna `(newCtx, *EventBuilder)` |
+| `oltgo.WithActiveEvent(ctx, eventID)` | Associa manualmente um ID de evento ao contexto |
+| `oltgo.ActiveEventFromContext(ctx)` | Recupera o ID do evento ativo do contexto |
+
+> **Nota:** A API antiga `collection.StartEvent(...)` continua funcionando para casos onde o aninhamento não é necessário. Eventos criados por ela não terão `parent_event_id` e aparecerão como raízes.
+
+---
+
+## 5. O Schema de Log Estruturado
 
 Todos os logs commitados são unificados sob uma estrutura padrão e enviados para o callback `ProcessLog`. A documentação completa dos campos do schema JSON pode ser vista em:
-- [Documentação de Campos (docs/log.md)](file:///Users/macbook/projects/oltgo/docs/log.md)
+- [Documentação de Campos (docs/log.md)](docs/log.md)

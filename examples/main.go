@@ -98,34 +98,50 @@ func main() {
 	simulateLocalCall(agent, true)
 
 	time.Sleep(1 * time.Second)
+	fmt.Println("\n--- Simulando fluxo com eventos hierárquicos (context.Context) ---")
+	simulateHierarchicalFlow(agent)
+
+	time.Sleep(1 * time.Second)
 	fmt.Println("Desligando servidor de exemplo...")
 	server.Shutdown(context.Background())
 }
 
 // Lógica de negócios simulada que demonstra o uso do context.Context
+// com a nova API de eventos hierárquicos (oltgo.StartEvent)
 func checkoutHandler(ctx context.Context) error {
-	// Recupera a Collection propagada no contexto
-	col := oltgo.FromContext(ctx)
+	// Evento raiz: checkout_flow — todos os subeventos serão filhos dele
+	ctx, mainEvt := oltgo.StartEvent(ctx, "checkout_flow", oltgo.TypeFunction, oltgo.SeverityInfo)
+	defer mainEvt.WithMessage("Fluxo de checkout completo").End()
 
-	// Evento 1: Autenticação
-	event1 := col.StartEvent("authenticate_user", oltgo.TypeFunction, oltgo.SeverityInfo)
-	time.Sleep(15 * time.Millisecond) // Simula processamento
-	event1.WithMessage("Usuário autenticado com JWT local").End()
+	// Subevento: Autenticação (filho de checkout_flow)
+	authenticateUser(ctx)
 
-	// Evento 2: Query no Banco de Dados
-	event2 := col.StartEvent("fetch_items", oltgo.TypeDatabase, oltgo.SeverityInfo)
-	time.Sleep(45 * time.Millisecond) // Simula query
-	event2.WithMessage("Consulta de catálogo finalizada").
+	// Subevento: Busca de itens (filho de checkout_flow)
+	fetchItems(ctx)
+
+	return nil
+}
+
+// authenticateUser demonstra um subevento simples que herda o pai do contexto
+func authenticateUser(ctx context.Context) {
+	_, evt := oltgo.StartEvent(ctx, "authenticate_user", oltgo.TypeFunction, oltgo.SeverityInfo)
+	time.Sleep(15 * time.Millisecond)
+	evt.WithMessage("Usuário autenticado com JWT local").End()
+}
+
+// fetchItems demonstra um subevento com metadata que herda o pai do contexto
+func fetchItems(ctx context.Context) {
+	_, evt := oltgo.StartEvent(ctx, "fetch_items", oltgo.TypeDatabase, oltgo.SeverityInfo)
+	time.Sleep(45 * time.Millisecond)
+	evt.WithMessage("Consulta de catálogo finalizada").
 		WithMetadata(map[string]any{
 			"table":          "products",
 			"rows_returned":  3,
 			"execution_time": "45ms",
 		}).End()
-
-	return nil
 }
 
-// Simulador local para verificação direta no terminal
+// Simulador local para verificação direta no terminal (usa a API antiga col.StartEvent)
 func simulateLocalCall(agent *oltgo.Agent, simulateFailure bool) {
 	tracingID := fmt.Sprintf("trace_%d", rand.Intn(999999))
 	col := agent.NewCollection(tracingID)
@@ -163,6 +179,99 @@ func simulateLocalCall(agent *oltgo.Agent, simulateFailure bool) {
 		evtFunc.WithMessage("Pagamento aprovado")
 	}
 	evtFunc.End()
+
+	col.Commit()
+}
+
+// simulateHierarchicalFlow demonstra a nova funcionalidade de eventos hierárquicos
+// usando context.Context para propagar automaticamente o parent_event_id
+func simulateHierarchicalFlow(agent *oltgo.Agent) {
+	tracingID := fmt.Sprintf("trace_hierarchy_%d", rand.Intn(999999))
+	col := agent.NewCollection(tracingID)
+
+	col.SetRequest(&oltgo.Request{
+		Communication: oltgo.ProtoREST,
+		Method:        "POST",
+		Route:         "/v1/orders/process",
+		Status:        200,
+		UserAgent:     "SimulatedClient/2.0",
+	})
+
+	col.SetActor(&oltgo.Actor{
+		ID:   "usr_premium_789",
+		Type: "USER",
+		IP:   "10.0.0.50",
+	})
+
+	// Injeta a Collection no contexto
+	ctx := oltgo.WithCollection(context.Background(), col)
+
+	// ===== ÁRVORE DE EVENTOS =====
+	// process_order (raiz)
+	//   ├── validate_cart
+	//   │     ├── check_stock
+	//   │     └── calculate_shipping
+	//   ├── authorize_payment
+	//   │     └── call_stripe_api
+	//   └── send_confirmation_email
+
+	// Nível 0: Evento raiz
+	ctx, processEvt := oltgo.StartEvent(ctx, "process_order", oltgo.TypeFunction, oltgo.SeverityInfo)
+	processEvt.WithMessage("Processando pedido #ORD-2026-0042")
+
+	// Nível 1: validate_cart (filho de process_order)
+	ctxValidate, validateEvt := oltgo.StartEvent(ctx, "validate_cart", oltgo.TypeFunction, oltgo.SeverityInfo)
+	time.Sleep(5 * time.Millisecond)
+
+	// Nível 2: check_stock (filho de validate_cart)
+	_, stockEvt := oltgo.StartEvent(ctxValidate, "check_stock", oltgo.TypeDatabase, oltgo.SeverityInfo)
+	time.Sleep(20 * time.Millisecond)
+	stockEvt.WithMessage("Estoque verificado: 3 itens disponíveis").
+		WithMetadata(map[string]any{
+			"warehouse": "SP-01",
+			"items":     []string{"SKU-001", "SKU-042", "SKU-100"},
+		}).End()
+
+	// Nível 2: calculate_shipping (filho de validate_cart)
+	_, shipEvt := oltgo.StartEvent(ctxValidate, "calculate_shipping", oltgo.TypeExternalService, oltgo.SeverityInfo)
+	time.Sleep(15 * time.Millisecond)
+	shipEvt.WithMessage("Frete calculado via Correios API").
+		WithMetadata(map[string]any{
+			"carrier":      "CORREIOS",
+			"service":      "SEDEX",
+			"cost_brl":     29.90,
+			"estimated_days": 3,
+		}).End()
+
+	validateEvt.WithMessage("Carrinho validado com sucesso").End()
+
+	// Nível 1: authorize_payment (filho de process_order)
+	ctxPay, payEvt := oltgo.StartEvent(ctx, "authorize_payment", oltgo.TypeFunction, oltgo.SeverityInfo)
+	time.Sleep(10 * time.Millisecond)
+
+	// Nível 2: call_stripe_api (filho de authorize_payment)
+	_, stripeEvt := oltgo.StartEvent(ctxPay, "call_stripe_api", oltgo.TypeExternalService, oltgo.SeverityInfo)
+	time.Sleep(50 * time.Millisecond)
+	stripeEvt.WithMessage("Pagamento autorizado com sucesso via Stripe").
+		WithMetadata(map[string]any{
+			"payment_intent": "pi_3abc123def456",
+			"amount_cents":   15990,
+			"currency":       "BRL",
+			"card_last4":     "4242",
+		}).End()
+
+	payEvt.WithMessage("Pagamento autorizado").End()
+
+	// Nível 1: send_confirmation_email (filho de process_order)
+	_, emailEvt := oltgo.StartEvent(ctx, "send_confirmation_email", oltgo.TypeExternalService, oltgo.SeverityInfo)
+	time.Sleep(25 * time.Millisecond)
+	emailEvt.WithMessage("E-mail de confirmação enviado").
+		WithMetadata(map[string]any{
+			"to":       "cliente@email.com",
+			"template": "order_confirmation_v2",
+		}).End()
+
+	processEvt.End()
 
 	col.Commit()
 }

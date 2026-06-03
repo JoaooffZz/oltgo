@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -37,6 +38,7 @@ type Collection struct {
 	actor         *Actor
 	createdAt     time.Time
 	events        []Event
+	eventCounter  int64
 }
 
 // NewCollection inicializa uma nova Collection vinculada ao Agent.
@@ -120,11 +122,84 @@ func (c *Collection) Commit() {
 			CreatedAt:  c.createdAt,
 			FinishedAt: finishedAt,
 		},
-		Events: c.events,
+		Events: buildEventTree(c.events),
 	}
 	c.mu.Unlock()
 
 	c.agent.Shipping.Ship(log)
+}
+
+func buildEventTree(flatEvents []Event) []*Event {
+	nodes := make(map[string]*Event)
+	var rootEvents []*Event
+
+	for i := range flatEvents {
+		evtCopy := flatEvents[i]
+		evtCopy.Events = make([]*Event, 0)
+		nodes[evtCopy.EventID] = &evtCopy
+	}
+
+	for i := range flatEvents {
+		eventID := flatEvents[i].EventID
+		node := nodes[eventID]
+		if node.ParentEventID != nil && *node.ParentEventID != "" {
+			parent, exists := nodes[*node.ParentEventID]
+			if exists {
+				parent.Events = append(parent.Events, node)
+			} else {
+				rootEvents = append(rootEvents, node)
+			}
+		} else {
+			rootEvents = append(rootEvents, node)
+		}
+	}
+
+	return rootEvents
+}
+
+type activeEventKey struct{}
+
+// WithActiveEvent associa um ID de evento ao contexto.
+func WithActiveEvent(ctx context.Context, eventID string) context.Context {
+	return context.WithValue(ctx, activeEventKey{}, eventID)
+}
+
+// ActiveEventFromContext recupera o ID do evento pai do contexto.
+func ActiveEventFromContext(ctx context.Context) string {
+	if id, ok := ctx.Value(activeEventKey{}).(string); ok {
+		return id
+	}
+	return ""
+}
+
+// StartEvent inicia a gravação de um evento usando context.Context. O evento herdará o ID do pai automaticamente.
+func StartEvent(ctx context.Context, name string, eventType EventType, severity Severity) (context.Context, *EventBuilder) {
+	c := FromContext(ctx)
+	if c == nil {
+		return ctx, &EventBuilder{}
+	}
+
+	idNum := atomic.AddInt64(&c.eventCounter, 1)
+	eventID := fmt.Sprintf("evt_%03d", idNum)
+
+	eb := &EventBuilder{
+		collection: c,
+		event: Event{
+			EventID:   eventID,
+			Name:      name,
+			Type:      eventType,
+			Severity:  severity,
+			Timestamp: time.Now(),
+			Status:    StatusSuccess,
+		},
+	}
+
+	if parentID := ActiveEventFromContext(ctx); parentID != "" {
+		eb.event.ParentEventID = &parentID
+	}
+
+	newCtx := WithActiveEvent(ctx, eventID)
+	return newCtx, eb
 }
 
 // EventBuilder auxilia desenvolvedores a construírem eventos com cálculo de tempo automático.
@@ -135,10 +210,7 @@ type EventBuilder struct {
 
 // StartEvent inicia a gravação de um evento. O evento será registrado no Collection chamando End().
 func (c *Collection) StartEvent(name string, eventType EventType, severity Severity) *EventBuilder {
-	c.mu.Lock()
-	idNum := len(c.events) + 1
-	c.mu.Unlock()
-
+	idNum := atomic.AddInt64(&c.eventCounter, 1)
 	eventID := fmt.Sprintf("evt_%03d", idNum)
 
 	return &EventBuilder{
@@ -156,24 +228,36 @@ func (c *Collection) StartEvent(name string, eventType EventType, severity Sever
 
 // WithParent define o ID do evento pai para construir árvores/spans.
 func (eb *EventBuilder) WithParent(parentID string) *EventBuilder {
+	if eb == nil {
+		return nil
+	}
 	eb.event.ParentEventID = &parentID
 	return eb
 }
 
 // WithMessage adiciona uma mensagem explicativa ao evento.
 func (eb *EventBuilder) WithMessage(msg string) *EventBuilder {
+	if eb == nil {
+		return nil
+	}
 	eb.event.Message = msg
 	return eb
 }
 
 // WithMetadata injeta dados de contexto adicionais de forma flexível.
 func (eb *EventBuilder) WithMetadata(metadata map[string]any) *EventBuilder {
+	if eb == nil {
+		return nil
+	}
 	eb.event.Metadata = metadata
 	return eb
 }
 
 // AddError adiciona um erro ocorrido durante a operação do evento, definindo o status do evento como FAILURE.
 func (eb *EventBuilder) AddError(code, message string, stack *string) *EventBuilder {
+	if eb == nil {
+		return nil
+	}
 	eb.event.Status = StatusFailure
 	eb.event.Errors = append(eb.event.Errors, EventError{
 		Code:    code,
@@ -185,6 +269,9 @@ func (eb *EventBuilder) AddError(code, message string, stack *string) *EventBuil
 
 // End calcula o tempo de duração final do evento e o adiciona à Collection.
 func (eb *EventBuilder) End() {
+	if eb == nil || eb.collection == nil {
+		return
+	}
 	eb.event.DurationMs = int(time.Since(eb.event.Timestamp).Milliseconds())
 	if eb.event.DurationMs < 0 {
 		eb.event.DurationMs = 0

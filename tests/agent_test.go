@@ -100,7 +100,7 @@ func TestCollectionAndShippingWithCallback(t *testing.T) {
 	}
 
 	if len(processedLog.Events) != 2 {
-		t.Errorf("expected 2 events, got %d", len(processedLog.Events))
+		t.Errorf("expected 2 root events, got %d", len(processedLog.Events))
 	}
 
 	if processedLog.Events[0].Name != "auth" || processedLog.Events[0].Status != oltgo.StatusSuccess {
@@ -128,6 +128,15 @@ func TestCollectionAndShippingDiscard(t *testing.T) {
 	agent.Close()
 }
 
+// countAllEvents conta recursivamente todos os eventos na árvore.
+func countAllEvents(events []*oltgo.Event) int {
+	count := len(events)
+	for _, evt := range events {
+		count += countAllEvents(evt.Events)
+	}
+	return count
+}
+
 func TestCollectionConcurrencySafety(t *testing.T) {
 	service := oltgo.Service{
 		Name:    "concurrent-service",
@@ -140,7 +149,7 @@ func TestCollectionConcurrencySafety(t *testing.T) {
 	processLog := func(log oltgo.LogSchema) error {
 		mu.Lock()
 		defer mu.Unlock()
-		processedCount += len(log.Events)
+		processedCount += countAllEvents(log.Events)
 		return nil
 	}
 
@@ -168,5 +177,140 @@ func TestCollectionConcurrencySafety(t *testing.T) {
 
 	if processedCount != 50 {
 		t.Errorf("expected 50 events processed, got %d", processedCount)
+	}
+}
+
+func TestHierarchicalEventsWithContext(t *testing.T) {
+	service := oltgo.Service{
+		Name:    "hierarchy-service",
+		Version: "1.0.0",
+	}
+
+	var processedLog oltgo.LogSchema
+	var mu sync.Mutex
+	called := false
+
+	processLog := func(log oltgo.LogSchema) error {
+		mu.Lock()
+		defer mu.Unlock()
+		processedLog = log
+		called = true
+		return nil
+	}
+
+	agent := oltgo.NewAgent(service, oltgo.Testing, "1", processLog)
+
+	col := agent.NewCollection("trace-hierarchy")
+	ctx := oltgo.WithCollection(context.Background(), col)
+
+	// Evento raiz: process_order
+	ctx, mainEvt := oltgo.StartEvent(ctx, "process_order", oltgo.TypeFunction, oltgo.SeverityInfo)
+	mainEvt.WithMessage("processing order")
+
+	// Subevento 1: validate_cart (filho de process_order)
+	ctx2, validateEvt := oltgo.StartEvent(ctx, "validate_cart", oltgo.TypeFunction, oltgo.SeverityInfo)
+	validateEvt.WithMessage("cart validated")
+	validateEvt.End()
+
+	// Subevento 1.1: check_stock (filho de validate_cart)
+	_, stockEvt := oltgo.StartEvent(ctx2, "check_stock", oltgo.TypeDatabase, oltgo.SeverityInfo)
+	stockEvt.WithMessage("stock checked")
+	stockEvt.End()
+
+	// Subevento 2: authorize_payment (filho de process_order)
+	_, payEvt := oltgo.StartEvent(ctx, "authorize_payment", oltgo.TypeExternalService, oltgo.SeverityInfo)
+	payEvt.WithMessage("payment authorized")
+	payEvt.End()
+
+	mainEvt.End()
+
+	col.Commit()
+	agent.Close()
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if !called {
+		t.Fatal("expected ProcessLog callback to be called")
+	}
+
+	// Deve haver 1 evento raiz: "process_order"
+	if len(processedLog.Events) != 1 {
+		t.Fatalf("expected 1 root event, got %d", len(processedLog.Events))
+	}
+
+	root := processedLog.Events[0]
+	if root.Name != "process_order" {
+		t.Errorf("expected root event name 'process_order', got '%s'", root.Name)
+	}
+
+	// O root deve ter 2 filhos diretos: validate_cart e authorize_payment
+	if len(root.Events) != 2 {
+		t.Fatalf("expected 2 child events under root, got %d", len(root.Events))
+	}
+
+	validateChild := root.Events[0]
+	if validateChild.Name != "validate_cart" {
+		t.Errorf("expected first child name 'validate_cart', got '%s'", validateChild.Name)
+	}
+
+	payChild := root.Events[1]
+	if payChild.Name != "authorize_payment" {
+		t.Errorf("expected second child name 'authorize_payment', got '%s'", payChild.Name)
+	}
+
+	// validate_cart deve ter 1 filho: check_stock
+	if len(validateChild.Events) != 1 {
+		t.Fatalf("expected 1 child event under validate_cart, got %d", len(validateChild.Events))
+	}
+
+	stockChild := validateChild.Events[0]
+	if stockChild.Name != "check_stock" {
+		t.Errorf("expected grandchild name 'check_stock', got '%s'", stockChild.Name)
+	}
+
+	// O total de eventos na árvore deve ser 4
+	totalEvents := countAllEvents(processedLog.Events)
+	if totalEvents != 4 {
+		t.Errorf("expected 4 total events in tree, got %d", totalEvents)
+	}
+}
+
+func TestStartEventWithoutCollectionInContext(t *testing.T) {
+	// Sem Collection no contexto, StartEvent não deve causar panic
+	ctx := context.Background()
+	newCtx, eb := oltgo.StartEvent(ctx, "orphan_event", oltgo.TypeFunction, oltgo.SeverityInfo)
+
+	// O contexto retornado deve ser o original
+	if newCtx != ctx {
+		t.Errorf("expected original context when no collection is present")
+	}
+
+	// O End() deve ser seguro e não causar panic
+	eb.WithMessage("test").End()
+}
+
+func TestActiveEventContextPropagation(t *testing.T) {
+	// Validar que WithActiveEvent e ActiveEventFromContext funcionam corretamente
+	ctx := context.Background()
+
+	// Sem evento ativo, deve retornar string vazia
+	activeID := oltgo.ActiveEventFromContext(ctx)
+	if activeID != "" {
+		t.Errorf("expected empty active event ID, got '%s'", activeID)
+	}
+
+	// Injetar evento ativo
+	ctx = oltgo.WithActiveEvent(ctx, "evt_001")
+	activeID = oltgo.ActiveEventFromContext(ctx)
+	if activeID != "evt_001" {
+		t.Errorf("expected active event ID 'evt_001', got '%s'", activeID)
+	}
+
+	// Sobrescrever com outro evento ativo
+	ctx = oltgo.WithActiveEvent(ctx, "evt_002")
+	activeID = oltgo.ActiveEventFromContext(ctx)
+	if activeID != "evt_002" {
+		t.Errorf("expected active event ID 'evt_002', got '%s'", activeID)
 	}
 }

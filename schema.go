@@ -46,7 +46,7 @@ type LogSchema struct {
 	Request       *Request    `json:"request,omitempty"`
 	Actor         *Actor      `json:"actor,omitempty"`
 	Time          TimeInfo    `json:"time"`
-	Events        []Event     `json:"events"`
+	Events        []*Event    `json:"events"`
 }
 
 type Request struct {
@@ -81,6 +81,7 @@ type Event struct {
 	Message       string         `json:"message"`
 	Metadata      map[string]any `json:"metadata,omitempty"`
 	Errors        []EventError   `json:"errors,omitempty"`
+	Events        []*Event       `json:"events,omitempty"`
 }
 
 type EventError struct {
