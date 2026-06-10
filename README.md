@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" alt="Oltgo Logo" width="280" style="border-radius: 12px;" />
+  <img src="assets/logo.png" alt="Oltgo Logo" width="380" style="border-radius: 12px;" />
 </p>
 
 # Oltgo — Biblioteca de Telemetria e Observabilidade em Go
