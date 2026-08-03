@@ -2,8 +2,10 @@ package tests
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -126,6 +128,122 @@ func TestCollectionAndShippingDiscard(t *testing.T) {
 
 	// Closing the agent to ensure worker finishes processing
 	agent.Close()
+}
+
+func TestInitializationLogOmitsRequest(t *testing.T) {
+	service := oltgo.Service{
+		Name:    "bootstrap-service",
+		Version: "1.0.0",
+	}
+
+	var processedLog oltgo.LogSchema
+	var mu sync.Mutex
+	called := false
+
+	processLog := func(log oltgo.LogSchema) error {
+		mu.Lock()
+		defer mu.Unlock()
+		processedLog = log
+		called = true
+		return nil
+	}
+
+	agent := oltgo.NewAgent(service, oltgo.Testing, "1", processLog)
+
+	// Trace de inicialização: nenhum SetRequest / SetActor é chamado.
+	col := agent.NewCollection("trace-startup")
+	ctx := oltgo.WithCollection(context.Background(), col)
+
+	ctx, bootEvt := oltgo.StartEvent(ctx, "bootstrap", oltgo.TypeFunction, oltgo.SeverityInfo)
+	bootEvt.WithMessage("inicializando serviço")
+
+	_, dbEvt := oltgo.StartEvent(ctx, "connect_database", oltgo.TypeDatabase, oltgo.SeverityInfo)
+	dbEvt.WithMessage("pool de conexões estabelecido").End()
+
+	bootEvt.End()
+
+	col.Commit()
+	agent.Close()
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if !called {
+		t.Fatal("expected ProcessLog callback to be called")
+	}
+
+	if processedLog.Request != nil {
+		t.Errorf("expected Request to be nil for an initialization log, got %+v", processedLog.Request)
+	}
+
+	if processedLog.Actor != nil {
+		t.Errorf("expected Actor to be nil for an initialization log, got %+v", processedLog.Actor)
+	}
+
+	if processedLog.Status != oltgo.StatusSuccess {
+		t.Errorf("expected overall Status SUCCESS without a request, got %s", processedLog.Status)
+	}
+
+	if len(processedLog.Events) != 1 {
+		t.Fatalf("expected 1 root event, got %d", len(processedLog.Events))
+	}
+
+	data, err := json.Marshal(processedLog)
+	if err != nil {
+		t.Fatalf("unexpected marshal error: %v", err)
+	}
+
+	payload := string(data)
+	if strings.Contains(payload, `"request"`) {
+		t.Errorf("expected the \"request\" key to be omitted from the JSON, got %s", payload)
+	}
+	if strings.Contains(payload, `"actor"`) {
+		t.Errorf("expected the \"actor\" key to be omitted from the JSON, got %s", payload)
+	}
+	if !strings.Contains(payload, `"tracing_id":"trace-startup"`) {
+		t.Errorf("expected tracing_id in the JSON, got %s", payload)
+	}
+}
+
+func TestSetRequestNilClearsRequest(t *testing.T) {
+	service := oltgo.Service{
+		Name:    "reset-service",
+		Version: "1.0.0",
+	}
+
+	var processedLog oltgo.LogSchema
+	var mu sync.Mutex
+
+	processLog := func(log oltgo.LogSchema) error {
+		mu.Lock()
+		defer mu.Unlock()
+		processedLog = log
+		return nil
+	}
+
+	agent := oltgo.NewAgent(service, oltgo.Testing, "1", processLog)
+
+	col := agent.NewCollection("trace-reset")
+	col.SetRequest(&oltgo.Request{
+		Communication: oltgo.ProtoREST,
+		Method:        "GET",
+		Route:         "/health",
+		Status:        200,
+	})
+	col.SetRequest(nil)
+
+	// SetRequestFromHTTP com r nil deve ser seguro e não definir requisição.
+	col.SetRequestFromHTTP(nil, oltgo.ProtoREST, 200)
+
+	col.Commit()
+	agent.Close()
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if processedLog.Request != nil {
+		t.Errorf("expected Request to be nil after SetRequest(nil), got %+v", processedLog.Request)
+	}
 }
 
 // countAllEvents conta recursivamente todos os eventos na árvore.

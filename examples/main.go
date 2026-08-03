@@ -38,6 +38,11 @@ func main() {
 	agent := oltgo.NewAgent(service, oltgo.Development, "1", processLog)
 	defer agent.Close() // Garante o flush final dos logs em buffer
 
+	// 3.1. Registra a inicialização do serviço — um trace sem "request"
+	fmt.Println("\n--- Simulando log de inicialização (sem request) ---")
+	simulateStartupLog(agent)
+	time.Sleep(1 * time.Second)
+
 	// 4. Configura as rotas do servidor HTTP
 	mux := http.NewServeMux()
 	mux.HandleFunc("/checkout", func(w http.ResponseWriter, r *http.Request) {
@@ -104,6 +109,37 @@ func main() {
 	time.Sleep(1 * time.Second)
 	fmt.Println("Desligando servidor de exemplo...")
 	server.Shutdown(context.Background())
+}
+
+// simulateStartupLog demonstra um trace de inicialização: como não há requisição
+// envolvida, SetRequest nunca é chamado e o campo "request" é omitido do JSON.
+func simulateStartupLog(agent *oltgo.Agent) {
+	col := agent.NewCollection(fmt.Sprintf("trace_startup_%d", time.Now().UnixNano()))
+	ctx := oltgo.WithCollection(context.Background(), col)
+
+	ctx, bootEvt := oltgo.StartEvent(ctx, "bootstrap", oltgo.TypeFunction, oltgo.SeverityInfo)
+
+	// Subevento: carregamento de configuração
+	_, cfgEvt := oltgo.StartEvent(ctx, "load_config", oltgo.TypeFunction, oltgo.SeverityInfo)
+	time.Sleep(8 * time.Millisecond)
+	cfgEvt.WithMessage("Variáveis de ambiente carregadas").
+		WithMetadata(map[string]any{
+			"source": "env",
+			"keys":   []string{"DATABASE_URL", "STRIPE_KEY", "PORT"},
+		}).End()
+
+	// Subevento: conexão com o banco de dados
+	_, dbEvt := oltgo.StartEvent(ctx, "connect_database", oltgo.TypeDatabase, oltgo.SeverityInfo)
+	time.Sleep(35 * time.Millisecond)
+	dbEvt.WithMessage("Pool de conexões estabelecido").
+		WithMetadata(map[string]any{
+			"driver":         "postgres",
+			"max_open_conns": 25,
+		}).End()
+
+	bootEvt.WithMessage("Serviço inicializado com sucesso").End()
+
+	col.Commit()
 }
 
 // Lógica de negócios simulada que demonstra o uso do context.Context

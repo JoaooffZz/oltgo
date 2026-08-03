@@ -7,6 +7,7 @@
   "tracing_id": "trace_4d2e8a1f-bc37-4f9e-a12c-7e3d5b90c841",
   "status": "FAILURE",
   "environment": "production",
+  "schema_version": "1",
   "service": {
     "id": "instancia-1",
     "name": "Processamento de pedidos",
@@ -23,7 +24,7 @@
   },
   "actor": {
     "id": "123132",
-    "name": "User",
+    "type": "USER",
     "ip": "192.168.1.42"
   },
   "time": {
@@ -189,14 +190,74 @@
 
 ---
 
+## Exemplo — Log de Inicialização (sem `request`)
+
+O campo `request` é **opcional**. Traces que não nascem de uma requisição — inicialização do serviço, jobs agendados, workers de fila, CLIs — simplesmente não chamam `SetRequest` e o campo é omitido do JSON:
+
+```json
+{
+  "tracing_id": "trace_startup_9f2a1c",
+  "status": "SUCCESS",
+  "environment": "production",
+  "schema_version": "1",
+  "service": {
+    "name": "Processamento de pedidos",
+    "version": "1.0.0"
+  },
+  "time": {
+    "duration_ms": 412,
+    "created_at": "2026-05-24T10:00:00.000Z",
+    "finished_at": "2026-05-24T10:00:00.412Z"
+  },
+  "events": [
+    {
+      "event_id": "evt_001",
+      "name": "bootstrap",
+      "type": "FUNCTION",
+      "status": "SUCCESS",
+      "severity": "INFO",
+      "timestamp": "2026-05-24T10:00:00.000Z",
+      "duration_ms": 412,
+      "message": "Serviço inicializado",
+      "events": [
+        {
+          "event_id": "evt_002",
+          "parent_event_id": "evt_001",
+          "name": "connect_database",
+          "type": "DATABASE",
+          "status": "SUCCESS",
+          "severity": "INFO",
+          "timestamp": "2026-05-24T10:00:00.010Z",
+          "duration_ms": 180,
+          "message": "Pool de conexões estabelecido",
+          "metadata": {
+            "driver": "postgres",
+            "max_open_conns": 25
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+Note que `request` e `actor` estão ausentes — não são enviados como `null`, são omitidos.
+
+---
+
 ## Envelope Raiz
 
-| Campo            | Tipo     | Obrigatório | Descrição                                                                   | Exemplo                                        |
-| ---------------- | -------- | ----------- | --------------------------------------------------------------------------- | ---------------------------------------------- |
-| `tracing_id`     | `string` | ✅           | Identificador único global da requisição                                    | `"trace_4d2e8a1f-bc37-4f9e-a12c-7e3d5b90c841"` |
-| `status`         | `enum`   | ✅           | Status final da requisição. Valores: `SUCCESS`, `FAILURE`                   | `"FAILURE"`                                    |
-| `environment`    | `enum`   | ✅           | Ambiente de execução                                                        | `"production"`, `"staging"`, `"development"`   |
-| `schema_version` | `string` | ✅           | Versão do schema do log. Permite evoluir o formato sem quebrar consumidores | `"1"`                                          |
+| Campo            | Tipo        | Obrigatório | Descrição                                                                                                          | Exemplo                                        |
+| ---------------- | ----------- | ----------- | ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------- |
+| `tracing_id`     | `string`    | ✅           | Identificador único global do trace                                                                                 | `"trace_4d2e8a1f-bc37-4f9e-a12c-7e3d5b90c841"` |
+| `status`         | `enum`      | ✅           | Status final do trace. Valores: `SUCCESS`, `FAILURE`                                                               | `"FAILURE"`                                    |
+| `environment`    | `enum`      | ✅           | Ambiente de execução                                                                                               | `"production"`, `"staging"`, `"development"`    |
+| `schema_version` | `string`    | ✅           | Versão do schema do log. Permite evoluir o formato sem quebrar consumidores                                        | `"1"`                                          |
+| `service`        | `object`    | ✅           | Serviço que gerou o log. Ver [`service`](#service)                                                                 | ver abaixo                                     |
+| `request`        | `object`    | ❌           | Requisição que originou o trace. **Omitido** em traces sem requisição (inicialização, jobs, workers, CLIs)          | ver abaixo                                     |
+| `actor`          | `object`    | ❌           | Quem disparou o trace. Omitido quando não há usuário ou serviço chamador                                           | ver abaixo                                     |
+| `time`           | `object`    | ✅           | Temporização total do trace. Ver [`time`](#time)                                                                   | ver abaixo                                     |
+| `events`         | `[]Event`   | ✅           | Eventos rastreados. Array vazio quando nada foi registrado                                                         | ver abaixo                                     |
 
 ---
 
@@ -218,6 +279,8 @@ Informações sobre o serviço que gerou o log.
 
 Dados sobre a requisição recebida pelo serviço.
 
+> **Objeto opcional.** Preenchido via `collection.SetRequest(...)` ou `collection.SetRequestFromHTTP(...)`. Quando nenhum dos dois é chamado, o objeto inteiro é omitido do JSON — é assim que se registram logs de inicialização, jobs e workers. Os campos marcados como obrigatórios abaixo só valem **quando** o objeto está presente.
+
 | Campo           | Tipo     | Obrigatório | Descrição                                                                        | Exemplo                 |
 | --------------- | -------- | ----------- | -------------------------------------------------------------------------------- | ----------------------- |
 | `communication` | `enum`   | ✅           | Protocolo de comunicação utilizado. Valores: `REST`, `gRPC`, `SOAP`, `WebSocket` | `"REST"`                |
@@ -231,6 +294,8 @@ Dados sobre a requisição recebida pelo serviço.
 ## `actor`
 
 Contexto de quem disparou a requisição (usuário humano ou serviço).
+
+> **Objeto opcional.** Preenchido via `collection.SetActor(...)`. Omitido do JSON quando não há um chamador identificável — o caso típico de traces de inicialização.
 
 | Campo | Tipo | Obrigatório | Descrição | Exemplo |
 |---|---|---|---|---|

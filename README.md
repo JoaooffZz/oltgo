@@ -217,7 +217,69 @@ O `Commit()` produz uma árvore aninhada automaticamente:
 
 ---
 
-## 5. O Schema de Log Estruturado
+## 5. Logs sem Requisição (Inicialização, Jobs e Workers)
+
+O campo `request` do schema é **opcional**. Nem todo trace nasce de uma requisição HTTP/gRPC: a inicialização do serviço, migrações, jobs agendados, consumidores de fila e CLIs também merecem observabilidade.
+
+Para esses casos basta **não chamar** `SetRequest` / `SetRequestFromHTTP`. O campo `request` (e também `actor`, se não definido) é omitido do JSON final — não é enviado como `null`.
+
+```go
+func bootstrap(agent *oltgo.Agent) error {
+	// Trace de inicialização: nenhum SetRequest é necessário
+	col := agent.NewCollection("trace_startup_" + version)
+	ctx := oltgo.WithCollection(context.Background(), col)
+	defer col.Commit()
+
+	ctx, bootEvt := oltgo.StartEvent(ctx, "bootstrap", oltgo.TypeFunction, oltgo.SeverityInfo)
+	defer bootEvt.WithMessage("Serviço inicializado").End()
+
+	// Subevento: conexão com o banco
+	_, dbEvt := oltgo.StartEvent(ctx, "connect_database", oltgo.TypeDatabase, oltgo.SeverityInfo)
+	if err := db.Ping(); err != nil {
+		dbEvt.AddError("DB_UNREACHABLE", err.Error(), nil)
+		dbEvt.End()
+		return err
+	}
+	dbEvt.WithMessage("Pool de conexões estabelecido").
+		WithMetadata(map[string]any{"driver": "postgres", "max_open_conns": 25}).
+		End()
+
+	return nil
+}
+```
+
+JSON resultante (sem `request` e sem `actor`):
+
+```json
+{
+  "tracing_id": "trace_startup_1.0.0",
+  "status": "SUCCESS",
+  "environment": "production",
+  "schema_version": "1",
+  "service": { "name": "order-api", "version": "1.0.0" },
+  "time": { "duration_ms": 412, "created_at": "...", "finished_at": "..." },
+  "events": [
+    {
+      "event_id": "evt_001",
+      "name": "bootstrap",
+      "events": [{ "event_id": "evt_002", "parent_event_id": "evt_001", "name": "connect_database" }]
+    }
+  ]
+}
+```
+
+### Regras de comportamento
+
+| Situação | Resultado |
+|---|---|
+| `SetRequest` nunca chamado | `request` omitido do JSON |
+| `SetRequest(nil)` | Limpa uma requisição definida anteriormente; `request` volta a ser omitido |
+| `SetRequestFromHTTP(nil, ...)` | Chamada ignorada com segurança (sem panic); `request` permanece omitido |
+| `status` geral do trace | Derivado apenas dos eventos quando não há `request`; um evento `FAILURE` marca o trace como `FAILURE` |
+
+---
+
+## 6. O Schema de Log Estruturado
 
 Todos os logs commitados são unificados sob uma estrutura padrão e enviados para o callback `ProcessLog`. A documentação completa dos campos do schema JSON pode ser vista em:
 - [Documentação de Campos (docs/log.md)](docs/log.md)

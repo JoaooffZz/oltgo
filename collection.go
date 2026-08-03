@@ -55,6 +55,9 @@ func NewCollection(agent *Agent, tracingID string) *Collection {
 }
 
 // SetRequest define informações de requisição de forma thread-safe.
+// É opcional: traces sem requisição (inicialização, jobs, workers, CLIs) podem
+// nunca chamar este método — o campo "request" será omitido do JSON final.
+// Passar nil também limpa uma requisição previamente definida.
 func (c *Collection) SetRequest(req *Request) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -62,7 +65,12 @@ func (c *Collection) SetRequest(req *Request) {
 }
 
 // SetRequestFromHTTP preenche informações da requisição a partir de um *http.Request nativo.
+// Se r for nil, a chamada é ignorada e o campo "request" permanece omitido.
 func (c *Collection) SetRequestFromHTTP(r *http.Request, comm CommunicationProto, status int) {
+	if r == nil {
+		return
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.request = &Request{

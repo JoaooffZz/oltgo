@@ -43,10 +43,13 @@ type LogSchema struct {
 	Environment   Environment `json:"environment"`
 	SchemaVersion string      `json:"schema_version"`
 	Service       Service     `json:"service"`
-	Request       *Request    `json:"request,omitempty"`
-	Actor         *Actor      `json:"actor,omitempty"`
-	Time          TimeInfo    `json:"time"`
-	Events        []*Event    `json:"events"`
+	// Request é opcional: traces que não nascem de uma requisição
+	// (inicialização do serviço, jobs, workers, CLIs) omitem o campo do JSON.
+	Request *Request `json:"request,omitempty"`
+	// Actor é opcional: omitido quando não há usuário ou serviço chamador.
+	Actor  *Actor   `json:"actor,omitempty"`
+	Time   TimeInfo `json:"time"`
+	Events []*Event `json:"events"`
 }
 
 type Request struct {
