@@ -37,6 +37,31 @@ const (
 	SeverityFatal Severity = "FATAL"
 )
 
+// severityRank ordena as severidades semanticamente. Comparar Severity como
+// string ordenaria alfabeticamente (DEBUG < ERROR < FATAL < INFO < WARN), que
+// está errado. Severidade desconhecida recebe rank 0, abaixo de DEBUG.
+func severityRank(s Severity) int {
+	switch s {
+	case SeverityDebug:
+		return 1
+	case SeverityInfo:
+		return 2
+	case SeverityWarn:
+		return 3
+	case SeverityError:
+		return 4
+	case SeverityFatal:
+		return 5
+	default:
+		return 0
+	}
+}
+
+// IsFailureSeverity informa se a severidade denota falha (ERROR ou acima).
+func IsFailureSeverity(s Severity) bool {
+	return severityRank(s) >= severityRank(SeverityError)
+}
+
 type LogSchema struct {
 	TracingID     string      `json:"tracing_id"`
 	Status        Status      `json:"status"`
@@ -74,7 +99,7 @@ type TimeInfo struct {
 
 type Event struct {
 	EventID       string         `json:"event_id"`
-	ParentEventID *string        `json:"parent_event_id"`
+	ParentEventID *string        `json:"parent_event_id,omitempty"`
 	Name          string         `json:"name"`
 	Type          EventType      `json:"type"`
 	Status        Status         `json:"status"`

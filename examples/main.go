@@ -16,7 +16,7 @@ func main() {
 	serviceName := "order-api"
 	serviceDesc := "API responsável pelo checkout e processamento de pedidos"
 	serviceTags := []string{"ecommerce", "checkout"}
-	
+
 	service := oltgo.Service{
 		Name:        serviceName,
 		Description: &serviceDesc,
@@ -49,10 +49,10 @@ func main() {
 		// Middleware manual de injeção de Collection no contexto
 		tracingID := fmt.Sprintf("trace_%d", time.Now().UnixNano())
 		collection := agent.NewCollection(tracingID)
-		
+
 		// Registra informações da requisição recebida
 		collection.SetRequestFromHTTP(r, oltgo.ProtoREST, http.StatusOK)
-		
+
 		// Configura o ator
 		collection.SetActor(&oltgo.Actor{
 			ID:   "usr_guest_456",
@@ -62,7 +62,7 @@ func main() {
 
 		// Coloca a coleção no contexto e chama a lógica de negócio
 		ctx := oltgo.WithCollection(r.Context(), collection)
-		
+
 		err := checkoutHandler(ctx)
 		if err != nil {
 			collection.SetRequest(&oltgo.Request{
@@ -84,7 +84,7 @@ func main() {
 
 	fmt.Println("Servidor de exemplo rodando em http://localhost:8080")
 	fmt.Println("Tente fazer uma requisição: curl http://localhost:8080/checkout")
-	
+
 	// Roda o servidor de exemplo em background por alguns segundos ou indefinitivamente
 	server := &http.Server{Addr: ":8080", Handler: mux}
 	go func() {
@@ -273,9 +273,9 @@ func simulateHierarchicalFlow(agent *oltgo.Agent) {
 	time.Sleep(15 * time.Millisecond)
 	shipEvt.WithMessage("Frete calculado via Correios API").
 		WithMetadata(map[string]any{
-			"carrier":      "CORREIOS",
-			"service":      "SEDEX",
-			"cost_brl":     29.90,
+			"carrier":        "CORREIOS",
+			"service":        "SEDEX",
+			"cost_brl":       29.90,
 			"estimated_days": 3,
 		}).End()
 

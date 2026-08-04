@@ -35,7 +35,7 @@
   "events": [
 
     {
-      "event_id": "evt_001",
+      "event_id": "evt_000001",
       "name": "authenticate_user",
       "type": "FUNCTION",
       "status": "SUCCESS",
@@ -51,7 +51,7 @@
     },
 
     {
-      "event_id": "evt_002",
+      "event_id": "evt_000002",
       "name": "process_order",
       "type": "FUNCTION",
       "status": "FAILURE",
@@ -62,8 +62,8 @@
       "events": [
 
         {
-          "event_id": "evt_003",
-          "parent_event_id": "evt_002",
+          "event_id": "evt_000003",
+          "parent_event_id": "evt_000002",
           "name": "validate_request_payload",
           "type": "FUNCTION",
           "status": "SUCCESS",
@@ -78,8 +78,8 @@
         },
 
         {
-          "event_id": "evt_004",
-          "parent_event_id": "evt_002",
+          "event_id": "evt_000004",
+          "parent_event_id": "evt_000002",
           "name": "fetch_cart_items",
           "type": "DATABASE",
           "status": "SUCCESS",
@@ -95,8 +95,8 @@
         },
 
         {
-          "event_id": "evt_005",
-          "parent_event_id": "evt_002",
+          "event_id": "evt_000005",
+          "parent_event_id": "evt_000002",
           "name": "check_stock_availability",
           "type": "INTERNAL_SERVICE",
           "status": "SUCCESS",
@@ -113,8 +113,8 @@
         },
 
         {
-          "event_id": "evt_006",
-          "parent_event_id": "evt_002",
+          "event_id": "evt_000006",
+          "parent_event_id": "evt_000002",
           "name": "process_payment",
           "type": "EXTERNAL_SERVICE",
           "status": "FAILURE",
@@ -143,8 +143,8 @@
           "events": [
 
             {
-              "event_id": "evt_007",
-              "parent_event_id": "evt_006",
+              "event_id": "evt_000007",
+              "parent_event_id": "evt_000006",
               "name": "release_stock_reservation",
               "type": "INTERNAL_SERVICE",
               "status": "SUCCESS",
@@ -160,8 +160,8 @@
             },
 
             {
-              "event_id": "evt_008",
-              "parent_event_id": "evt_006",
+              "event_id": "evt_000008",
+              "parent_event_id": "evt_000006",
               "name": "notify_user_payment_failed",
               "type": "INTERNAL_SERVICE",
               "status": "SUCCESS",
@@ -211,7 +211,7 @@ O campo `request` é **opcional**. Traces que não nascem de uma requisição �
   },
   "events": [
     {
-      "event_id": "evt_001",
+      "event_id": "evt_000001",
       "name": "bootstrap",
       "type": "FUNCTION",
       "status": "SUCCESS",
@@ -221,8 +221,8 @@ O campo `request` é **opcional**. Traces que não nascem de uma requisição �
       "message": "Serviço inicializado",
       "events": [
         {
-          "event_id": "evt_002",
-          "parent_event_id": "evt_001",
+          "event_id": "evt_000002",
+          "parent_event_id": "evt_000001",
           "name": "connect_database",
           "type": "DATABASE",
           "status": "SUCCESS",
@@ -251,7 +251,7 @@ Note que `request` e `actor` estão ausentes — não são enviados como `null`,
 | ---------------- | ----------- | ----------- | ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------- |
 | `tracing_id`     | `string`    | ✅           | Identificador único global do trace                                                                                 | `"trace_4d2e8a1f-bc37-4f9e-a12c-7e3d5b90c841"` |
 | `status`         | `enum`      | ✅           | Status final do trace. Valores: `SUCCESS`, `FAILURE`                                                               | `"FAILURE"`                                    |
-| `environment`    | `enum`      | ✅           | Ambiente de execução                                                                                               | `"production"`, `"staging"`, `"development"`    |
+| `environment`    | `string`    | ✅           | Ambiente de execução. Constantes: `production`, `staging`, `development`, `testing`. O tipo é `string` — valores fora dessa lista são aceitos | `"production"`, `"staging"`, `"development"`, `"testing"` |
 | `schema_version` | `string`    | ✅           | Versão do schema do log. Permite evoluir o formato sem quebrar consumidores                                        | `"1"`                                          |
 | `service`        | `object`    | ✅           | Serviço que gerou o log. Ver [`service`](#service)                                                                 | ver abaixo                                     |
 | `request`        | `object`    | ❌           | Requisição que originou o trace. **Omitido** em traces sem requisição (inicialização, jobs, workers, CLIs)          | ver abaixo                                     |
@@ -323,8 +323,8 @@ Array de eventos rastreados durante o ciclo de vida da requisição. Quando `olt
 
 | Campo | Tipo | Obrigatório | Descrição | Exemplo |
 |---|---|---|---|---|
-| `event_id` | `string` | ✅ | Identificador único do evento dentro do trace | `"evt_001"` |
-| `parent_event_id` | `string \| null` | ❌ | ID do evento pai. Omitido para eventos raiz. Preenchido automaticamente ao usar `oltgo.StartEvent(ctx, ...)` | `"evt_002"`, `null` |
+| `event_id` | `string` | ✅ | Identificador único do evento dentro do trace. **Não é chave de ordenação** — ver nota abaixo | `"evt_000001"` |
+| `parent_event_id` | `string` | ❌ | ID do evento pai. **Omitido** para eventos raiz (não é enviado como `null`). Preenchido automaticamente ao usar `oltgo.StartEvent(ctx, ...)` | `"evt_000002"` |
 | `name` | `string` | ✅ | Nome descritivo da operação rastreada | `"process_payment"` |
 | `type` | `enum` | ✅ | Categoria da operação. Valores: `FUNCTION`, `DATABASE`, `EXTERNAL_SERVICE`, `INTERNAL_SERVICE` | `"EXTERNAL_SERVICE"` |
 | `status` | `enum` | ✅ | Resultado do evento. Valores: `SUCCESS`, `FAILURE` | `"FAILURE"` |
@@ -335,6 +335,34 @@ Array de eventos rastreados durante o ciclo de vida da requisição. Quando `olt
 | `metadata` | `map[string]any` | ❌ | Dados contextuais livres, específicos por tipo de evento | ver abaixo |
 | `errors` | `[]EventError` | ❌ | Lista de erros ocorridos. Omitido quando vazio (`omitempty`) | ver abaixo |
 | `events` | `[]Event` | ❌ | Subeventos aninhados (filhos deste evento). Montados automaticamente no `Commit()` a partir do `parent_event_id`. Omitido quando vazio (`omitempty`) | ver exemplo acima |
+
+> **`event_id` não é chave de ordenação.** Ele é único apenas dentro do trace e a
+> ordenação lexicográfica não é confiável (`"evt_001000" < "evt_999999"`, mas o
+> primeiro é posterior). Para ordem cronológica use `timestamp`; para hierarquia,
+> `parent_event_id`.
+
+### Coerência entre `status`, `severity` e `errors`
+
+`status` (resultado) e `severity` (gravidade) são eixos distintos, mas não independentes.
+As regras abaixo são aplicadas pela biblioteca no momento em que o evento entra na
+`Collection`, uma única vez — o `status` do trace é apenas o roll-up dos eventos:
+
+| Regra | Efeito |
+|---|---|
+| `severity` `ERROR` ou `FATAL` | `status` derivado como `FAILURE` |
+| `severity` `DEBUG`, `INFO` ou `WARN` | `status` derivado como `SUCCESS` |
+| `errors` não vazio | `status` = `FAILURE` e `severity` elevada para no mínimo `ERROR` (sem rebaixar `FATAL`) |
+| Qualquer evento com `status` `FAILURE` | O trace inteiro vira `FAILURE` |
+| `request.status >= 400` | O trace vira `FAILURE` independentemente dos eventos |
+
+A derivação é **sobreponível**, para o caso do erro tratado com a execução seguindo por
+outro caminho: `EventBuilder.Succeed()` mantém `SUCCESS` num evento `ERROR`/`FATAL`, e um
+`Status` explícito em `AddEvent` é sempre respeitado. O diagnóstico continua visível na
+`severity`, e o trace não é contaminado. `EventBuilder.Fail()` faz o inverso: marca falha
+sem exigir um objeto de erro.
+
+`WARN` + `SUCCESS` permanece uma combinação legítima — "o retry teve sucesso na segunda
+tentativa" é exatamente isso.
 
 ---
 

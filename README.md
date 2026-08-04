@@ -179,22 +179,22 @@ O `Commit()` produz uma árvore aninhada automaticamente:
 {
   "events": [
     {
-      "event_id": "evt_001",
+      "event_id": "evt_000001",
       "name": "checkout_flow",
       "events": [
         {
-          "event_id": "evt_002",
-          "parent_event_id": "evt_001",
+          "event_id": "evt_000002",
+          "parent_event_id": "evt_000001",
           "name": "authenticate_user"
         },
         {
-          "event_id": "evt_003",
-          "parent_event_id": "evt_001",
+          "event_id": "evt_000003",
+          "parent_event_id": "evt_000001",
           "name": "fetch_items",
           "events": [
             {
-              "event_id": "evt_004",
-              "parent_event_id": "evt_003",
+              "event_id": "evt_000004",
+              "parent_event_id": "evt_000003",
               "name": "check_stock"
             }
           ]
@@ -260,9 +260,9 @@ JSON resultante (sem `request` e sem `actor`):
   "time": { "duration_ms": 412, "created_at": "...", "finished_at": "..." },
   "events": [
     {
-      "event_id": "evt_001",
+      "event_id": "evt_000001",
       "name": "bootstrap",
-      "events": [{ "event_id": "evt_002", "parent_event_id": "evt_001", "name": "connect_database" }]
+      "events": [{ "event_id": "evt_000002", "parent_event_id": "evt_000001", "name": "connect_database" }]
     }
   ]
 }
@@ -279,7 +279,77 @@ JSON resultante (sem `request` e sem `actor`):
 
 ---
 
-## 6. O Schema de Log Estruturado
+## 6. Status, Severidade e Erros
+
+`status` (o resultado da operação) e `severity` (a gravidade do registro) são eixos
+distintos, mas coerentes entre si. A biblioteca aplica a derivação **uma única vez**, no
+momento em que o evento entra na `Collection`:
+
+| Situação | `status` resultante |
+|---|---|
+| `severity` `ERROR` ou `FATAL` | `FAILURE` |
+| `severity` `DEBUG`, `INFO` ou `WARN` | `SUCCESS` |
+| `AddError(...)` chamado | `FAILURE`, e a `severity` sobe para no mínimo `ERROR` (sem rebaixar `FATAL`) |
+| Qualquer evento `FAILURE` | O trace inteiro vira `FAILURE` |
+
+`WARN` + `SUCCESS` continua sendo uma combinação válida — "o retry teve sucesso na segunda
+tentativa" é legítimo.
+
+### Sobrepondo a derivação
+
+```go
+// Erro tratado, execução segue por outro caminho.
+// O evento continua ERROR (aparece nos filtros de severidade e preserva o
+// diagnóstico), mas não contamina o status do trace.
+_, evt := oltgo.StartEvent(ctx, "cache_miss", oltgo.TypeDatabase, oltgo.SeverityError)
+evt.WithMessage("cache indisponível, caiu no banco").Succeed().End()
+
+// Falha real, sem código de erro a registrar.
+_, evt2 := oltgo.StartEvent(ctx, "validacao", oltgo.TypeFunction, oltgo.SeverityWarn)
+evt2.WithMessage("payload rejeitado").Fail().End()
+```
+
+Em `collection.AddEvent(...)`, um `Status` preenchido explicitamente é sempre respeitado;
+a derivação só acontece quando o campo é deixado vazio.
+
+O helper `oltgo.IsFailureSeverity(sev)` expõe a mesma comparação usada internamente —
+útil para consumidores que precisam filtrar por severidade mínima.
+
+---
+
+## 7. Observabilidade do Pipeline
+
+Telemetria nunca bloqueia a aplicação: quando o buffer do `Shipping` enche, os logs são
+descartados. `Stats()` torna esse descarte visível em vez de silencioso:
+
+```go
+st := agent.Stats()
+// st.Shipped  — processados com sucesso
+// st.Failed   — ProcessLog devolveu erro
+// st.Dropped  — descartados por buffer cheio ou Ship após Close()
+// st.QueueDepth / st.QueueCapacity — ocupação instantânea da fila
+```
+
+Para configurar o tamanho do buffer e receber os erros do `ProcessLog`, use
+`NewAgentWithOptions` (o `NewAgent` permanece inalterado):
+
+```go
+agent := oltgo.NewAgentWithOptions(service, oltgo.Production, "1", processLog, oltgo.Options{
+	BufferSize: 5000,
+	OnError: func(log oltgo.LogSchema, err error) {
+		// Roda no worker do Shipping: precisa ser rápido e não entrar em pânico.
+		metrics.Inc("telemetry.export_failed")
+	},
+})
+```
+
+> **Nota:** `Commit()` é idempotente. Uma `Collection` representa um trace de uso único, e
+> chamadas repetidas (o caso do `defer col.Commit()` somado a um `Commit()` explícito num
+> caminho de erro) são no-op em vez de reenviarem o trace.
+
+---
+
+## 8. O Schema de Log Estruturado
 
 Todos os logs commitados são unificados sob uma estrutura padrão e enviados para o callback `ProcessLog`. A documentação completa dos campos do schema JSON pode ser vista em:
 - [Documentação de Campos (docs/log.md)](docs/log.md)

@@ -7,4 +7,3 @@ type Service struct {
 	Version     string    `json:"version"`
 	Tags        *[]string `json:"tags,omitempty"`
 }
-
